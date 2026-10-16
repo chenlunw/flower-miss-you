@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>我好想你 🌸</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: radial-gradient(circle at 50% 35%, #2a2340 0%, #171223 55%, #0d0a16 100%);
+            overflow: hidden;
+            height: 100vh;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="scene"></canvas>
+
+    <script>
+        const canvas = document.getElementById("scene");
+        const ctx = canvas.getContext("2d");
+        let width, height;
+        const initWindow = { w: 0, h: 0 };
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resize);
+        resize();
+        initWindow.w = width;
+        initWindow.h = height;
+
+        // 把文字采样成目标点
+        function sampleTextPoints(text, fontSize) {
+            const off = document.createElement("canvas");
+            const octx = off.getContext("2d");
+            const font = `bold ${fontSize}px "奶酪体", "华康圆体", "Youyuan", "幼圆", "Microsoft YaHei", sans-serif`;
+            octx.font = font;
+            const tw = Math.ceil(octx.measureText(text).width);
+            const th = Math.ceil(fontSize * 1.3);
+            off.width = tw;
+            off.height = th;
+            octx.font = font;
+            octx.fillStyle = "#fff";
+            octx.textBaseline = "top";
+            octx.textAlign = "left";
+            octx.fillText(text, 0, fontSize * 0.15);
+            const data = octx.getImageData(0, 0, tw, th).data;
+            const pts = [];
+            const gap = 6; // 采样间距，决定花朵数量和文字清晰度
+            for (let y = 0; y < th; y += gap) {
+                for (let x = 0; x < tw; x += gap) {
+                    if (data[(y * tw + x) * 4 + 3] > 128) {
+                        pts.push({ x, y });
+                    }
+                }
+            }
+            return { points: pts, width: tw, height: th };
+        }
+
+        function drawFlower(x, y, size, rotation, petalColor, centerColor) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            const petals = 6;
+            for (let i = 0; i < petals; i++) {
+                ctx.rotate((Math.PI * 2) / petals);
+                ctx.beginPath();
+                ctx.ellipse(0, -size * 0.5, size * 0.28, size * 0.5, 0, 0, Math.PI * 2);
+                ctx.fillStyle = petalColor;
+                ctx.fill();
+            }
+            ctx.beginPath();
+            ctx.arc(0, 0, size * 0.2, 0, Math.PI * 2);
+            ctx.fillStyle = centerColor;
+            ctx.fill();
+            ctx.restore();
+        }
+
+        const text = "我好想你";
+        const fontSize = Math.max(70, Math.min(130, Math.min(width, height) * 0.14));
+        const tp = sampleTextPoints(text, fontSize);
+        const baseScale = Math.min(width, height) / Math.min(initWindow.w, initWindow.h) || 1;
+
+        // 花朵先飘落铺满全屏（约 5 秒），再一起汇聚成字
+        const gatherStart = 5000;
+
+        const flowers = tp.points.map((p) => {
+            const hue = Math.random() < 0.75 ? 300 + Math.random() * 60 : 40 + Math.random() * 20;
+            return {
+                baseX: p.x - tp.width / 2,
+                baseY: p.y - tp.height / 2,
+                x: Math.random() * width,
+                y: -40 - Math.random() * height,
+                vx: (Math.random() - 0.5) * 1.6,
+                vy: 0.6 + Math.random() * 2.2,
+                size: 5 + Math.random() * 3,
+                hue: hue,
+                rotation: Math.random() * Math.PI * 2,
+                vr: (Math.random() - 0.5) * 0.04,
+                phase: Math.random() * Math.PI * 2,
+                delay: gatherStart + Math.random() * 1500,
+                speed: 0.006 + Math.random() * 0.015
+            };
+        });
+
+        const startTime = Date.now();
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+
+            const now = Date.now();
+            const cx = width / 2;
+            const cy = height / 2;
+            const scale = (Math.min(width, height) / Math.min(initWindow.w, initWindow.h)) || 1;
+
+            flowers.forEach((f) => {
+                const tx = cx + f.baseX * scale;
+                const ty = cy + f.baseY * scale;
+                const elapsed = now - startTime;
+
+                if (elapsed < f.delay) {
+                    // 满天飘落阶段
+                    f.x += f.vx;
+                    f.y += f.vy;
+                    if (f.y > height + 40) { f.y = -40; f.x = Math.random() * width; }
+                    if (f.x > width + 40) f.x = -40;
+                    if (f.x < -40) f.x = width + 40;
+                } else {
+                    // 汇聚阶段：飞向目标 + 轻微浮动
+                    const driftX = Math.sin(now / 800 + f.phase) * 2;
+                    const driftY = Math.cos(now / 800 + f.phase * 1.3) * 2;
+                    f.x += (tx + driftX - f.x) * f.speed;
+                    f.y += (ty + driftY - f.y) * f.speed;
+                }
+
+                f.rotation += f.vr;
+
+                const petal = `hsl(${f.hue}, 82%, 70%)`;
+                const center = `hsl(45, 88%, 72%)`;
+                drawFlower(f.x, f.y, f.size, f.rotation, petal, center);
+            });
+
+            requestAnimationFrame(draw);
+        }
+        draw();
+    </script>
+</body>
+</html>
